@@ -1,0 +1,396 @@
+<!doctype html>
+<html ng-app="myApp">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>H3N2 - Cluster visualization</title>
+
+        <!-- Bootstrap core CSS -->
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css">
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery.perfect-scrollbar/0.6.10/css/perfect-scrollbar.css">
+        <link rel="stylesheet" href="css/main.css">
+
+        <script src="http://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.0.1/lodash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.0/jquery.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.perfect-scrollbar/0.6.10/js/perfect-scrollbar.jquery.js"></script>
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js"></script>
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.4.9/angular.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-router/0.2.17/angular-ui-router.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/1.1.1/ui-bootstrap-tpls.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/angular.locker/2.0.4/angular-locker.min.js"></script>        
+
+        <script src="http://influenza.3fx.us/js/jquery.nouislider.all.js"></script>
+        <link href="http://influenza.3fx.us/js/jquery.nouislider.css" rel="stylesheet"/>
+        <link href="http://influenza.3fx.us/js/jquery.nouislider.pips.css" rel="stylesheet"/>
+
+        <script>
+            function parse_fasta(str) {
+                var fasta = [];
+                var seqs = str.split('>');
+                //Loop starting on 1, because the first element of seqs is null
+                for(var i = 1; i < seqs.length; i++) {
+                    //Replace the \r
+                    seqs[i] = seqs[i].replace(/\r/g, '');
+                    //New element
+                    var seq = {};
+                    //Split the file content
+                    var fas = seqs[i].split('\n');
+                    seq.id = fas[0];  //Save the head
+                    seq.seq = ''; //Sequences
+                    //Push the sequences
+                    for(var j = 1; j < fas.length; j++) {
+                        seq.seq = seq.seq + fas[j]; //Add
+                    }
+                    fasta.push(seq);    //Push
+                }
+
+                //Return the fasta
+                return fasta;
+            }
+
+            var myApp = angular.module('myApp', ['ui.router', 'ui.bootstrap', 'angular-locker']);
+            myApp.filter('range', function() {
+                return function(input, total) {
+                    total = parseInt(total);
+
+                    for (var i=0; i<total; i++) {
+                        input.push(i);
+                    }
+
+                    return input;
+                };
+            });
+            myApp.filter('num', function() {
+                return function(input) {
+                  return parseInt(input, 10);
+                };
+            });
+            myApp.config(function($stateProvider, $urlRouterProvider) {
+                //
+                // For any unmatched url, redirect to /state1
+                $urlRouterProvider.otherwise("/");
+                //
+                // Now set up the states
+                $stateProvider
+                    .state('home', {
+                    url: "/",
+                    templateUrl: "partials/home.html",
+                    controller: 'VisualizationController'
+                })
+                    .state('about', {
+                    url: "/about",
+                    templateUrl: "partials/about.html"
+                })
+                    .state('contact', {
+                    url: "/contact",
+                    templateUrl: "partials/contact.html"
+                })
+            });
+
+
+
+            myApp.controller('FastaController', function($scope, $timeout, $http, locker, $uibModalInstance) {
+				
+                $scope.message = "";
+                $scope.fastaValue = "";
+				
+                $scope.submit = function () {
+                    $scope.message = "";
+                    var fastaJson = parse_fasta($scope.fastaValue);
+                    if(fastaJson.length == 0) {
+                        $scope.message = "Error: Invalid fasta";
+                    } else {
+                        locker.put('userFasta', fastaJson);                    
+                        $uibModalInstance.close(fastaJson);
+                    }
+                };
+
+                $scope.cancel = function () {
+                    $uibModalInstance.dismiss('cancel');
+                };
+
+            });
+
+            myApp.controller('VisualizationController', function($scope, $timeout, $http, $uibModal, locker) {
+                $scope.fastaSequences = [];
+                $scope.targetFasta = null;
+                $scope.selectedFasta = null;
+                $scope.selectedResidues = [];
+                $scope.results = null;
+                $scope.collectionName  = 'Default collection';
+				$scope.knownGlycosylationSites = [8, 22, 38, 63, 122, 126, 133, 144, 246, 276, 285, 165];
+				
+                window.scope = $scope;
+                $scope.selectFasta = function(fasta) {
+                    $scope.selectedFasta = fasta;
+                }
+
+                $scope.setMutations = function() {
+                    _.each($scope.results.substitutions, function(substitution) {
+                        glviewer.setStyle({resi:substitution, chain:['A']}, {sphere:{color: '0x007FFF'} });
+                    });
+                }
+                $scope.setGlycosylationSites = function() {
+                    _.each($scope.results.glycosylation.sequence2, function(residue) {
+                        glviewer.setStyle({resi:residue, chain:['A']}, {sphere:{color: '0xFFA500'} });
+                    });
+                }
+                $scope.showPatch = function(patch) {
+                    $scope.moleculeLoaded = false;
+                    $scope.resetPDB();
+                    $scope.setMutations();
+                    $scope.setGlycosylationSites();
+                    glviewer.setStyle({resi:patch.residues, chain:['A']}, {sphere:{color: '0x65E365'} }); 
+
+                    var mutations = _.intersection($scope.results.substitutions, patch.residues);
+                    glviewer.setStyle({resi:mutations, chain:['A']}, {sphere:{color: '0x339933'} }); 
+
+                    $scope.refreshPDB();
+                }
+                $scope.selectedCluster = null;
+                $scope.showCluster = function(cluster) {
+					var cluster = cluster || null;
+					 
+                    $scope.moleculeLoaded = false;
+                    $scope.selectedCluster = cluster;
+                    $timeout(function(){
+                        $scope.resetPDB();
+                        $scope.setMutations();
+						
+						if(cluster != null) {
+							glviewer.setStyle({resi:cluster, chain:['A']}, {sphere:{color: '0x90EE90'} }); 
+							var mutations = _.intersection($scope.results.substitutions, cluster);                                  
+							glviewer.setStyle({resi:mutations, chain:['A']}, {sphere:{color: '0x2F4F2F'} }); 
+						}
+						$scope.setGlycosylationSites();
+
+                        $scope.refreshPDB();
+                    }, 100);
+                }
+                $scope.refreshPDB = function() {
+                    $timeout(function(){
+                        glviewer.render();
+                        $scope.moleculeLoaded = true;
+                    }, 100);
+                }
+                $scope.processResults = function() {
+                    //show the mutations
+                    $scope.results.clusterCount  = _.size($scope.results.clusters);
+                    var firstCluster = _.first(_.keys($scope.results.clusters));
+                    if(firstCluster) {
+                        $scope.showCluster($scope.results.clusters[firstCluster]);
+                    } else {
+						$scope.showCluster();
+					}
+					
+                }
+
+                $scope.running = false;
+                $scope.moleculeLoaded = false;
+                
+                var labels = [];
+                $scope.isSelectedResidue = function(mutation) {
+                    var residue = parseInt( mutation.substring(1, mutation.length-1) );
+                    if(_.indexOf($scope.selectedResidues, residue) > -1) {
+                        return true;    
+                    } else {
+                        return false;
+                    }
+                }
+                
+                $scope.selectResidue = function(mutation) {
+                    var residue = parseInt( mutation.substring(1, mutation.length-1) );
+                    if(_.indexOf($scope.selectedResidues, residue) > -1) {
+                        $scope.selectedResidues = _.without($scope.selectedResidues, residue);
+                    } else {
+                        $scope.selectedResidues.push(residue);
+                    }
+                    glviewer.removeAllLabels();
+                    var atoms = glviewer.getModel().selectedAtoms({
+                        atom : "CA"
+                    });
+                    for ( var a in atoms) {
+                        var atom = atoms[a];
+                        if(_.indexOf($scope.selectedResidues, atom.resi) > -1) {
+
+                            var l = glviewer.addLabel(atom.resi, {
+                                inFront : true,
+                                fontSize : 12,
+                                position : {
+                                    x : atom.x,
+                                    y : atom.y,
+                                    z : atom.z
+                                }
+                            });
+                            atom.label = l;
+                            labels.push(atom);
+                        }
+                    }
+                    $scope.refreshPDB();
+                    
+                }
+                
+                $scope.performComparison = function() {
+                    glviewer.removeAllLabels();
+                    $scope.selectedResidues = [];
+                    $scope.running = true;
+                    $scope.moleculeLoaded = false;
+                    var params = {};
+                    params['sequence1'] = $scope.targetFasta.seq;
+                    params['sequence2'] = $scope.selectedFasta.seq;
+                    $http.post('/submission', params, {
+                    }).then(
+                        function(response) {
+                            $scope.selectedCluster = null;
+                            $scope.results = response.data;
+                            $scope.strain1 = $scope.targetFasta.id;
+                            $scope.strain2 = $scope.selectedFasta.id;
+                            $scope.processResults();
+                            $scope.running = false;
+                        },
+                        function(data) {
+                            // Handle error here
+                            console.log('data',data)
+                        }
+                    );
+                }
+
+                $scope.openFasta = function (size) {
+
+                    var modalInstance = $uibModal.open({
+                        animation: true,
+                        templateUrl: 'partials/fasta.html',
+                        controller: 'FastaController',
+                        size: 'lg',
+                        backdrop: true
+                    });
+
+                    modalInstance.result.then(function () {
+                        $scope.initFasta();
+                    }, function () {
+                        console.log('Modal dismissed at: ' + new Date());
+                    });
+                }
+
+                $scope.resetPDB = function() {
+                    glviewer.setStyle({chain:['A']}, {sphere:{color: '0xE2E2E2'} });
+                    glviewer.mapAtomProperties($3Dmol.partialCharges);
+                    glviewer.zoomTo();
+                    glviewer.zoom(2);
+                    glviewer.render();
+                }
+
+                $scope.initFasta = function() {
+                    $scope.fastaSequences = locker.get('userFasta', $scope.defaultFasta);
+                    if(locker.has('userFasta')) {
+                        $scope.collectionName  = 'Your collection';
+                    }
+
+					$scope.fastaSequences = _.sortBy($scope.fastaSequences, function(element){
+						var year = parseInt(element.id.substr(element.id.length - 4));
+						return year;
+					});
+
+                    $scope.targetFasta = _.first($scope.fastaSequences);
+					if($scope.fastaSequences.length > 1) {
+						$scope.selectedFasta = _.last(_.take($scope.fastaSequences, 2));
+					} else {
+						$scope.selectedFasta = _.last($scope.fastaSequences);
+					}
+                    $scope.performComparison();
+                }
+
+                $scope.init = function() {
+                    glviewer = $3Dmol.createViewer("gldiv", {
+                        defaultcolors : $3Dmol.rasmolElementColors
+                    });
+                    glviewer.setBackgroundColor(0xffffff);
+
+                    $http.get("HA1.pdb")
+                        .then(function(response){
+                        var data = response.data;
+                        model = glviewer.addModel(data, "pdb");
+                        $scope.resetPDB();                        
+                    });
+
+                    $http.get('default.fasta.json').then(
+                        function(response) {
+                            $scope.defaultFasta = response.data;
+                            $scope.fastaSequences = response.data;
+                            $scope.initFasta();
+                            $('.scroll-container').perfectScrollbar();
+                        },
+                        function(data) {
+                            // Handle error here
+                            console.log('data',data)
+                        }
+                    );
+
+
+                    $('#soft').noUiSlider({
+                        start: -1.8,
+                        range: {
+                            min: -20,
+                            max: 350
+                        }
+                    });
+
+                    var pos = (-parseInt($('#soft').val()) * 30) - 20;
+                    $('.sequence-string').css({left: pos});
+
+                    $('#soft').noUiSlider_pips({
+                        mode: 'values',
+                        values: [0, 50, 100, 150, 200, 250, 300, 350],
+                        density: 4
+                    });
+
+                    $('#soft').on('set', function ( event, value ) {
+                        if ( value < -1.8 ) {
+                            $(this).val(-1.8);
+                        } else if ( value > 312 ) {
+                            $(this).val(312);
+                        }
+
+                        //20px for each label
+                        var pos = (-parseInt($(this).val()) * 30) - 20;
+                        $('.sequence-string').css({left: pos})
+                    });
+                    $('#soft').on('slide', function ( event, value ) {
+                        var pos = (-parseInt($(this).val()) * 30) - 20;
+                        $('.sequence-string').css({left: pos})
+                    });
+
+                }
+
+                $scope.init();
+            });
+        </script>
+    </head>
+    <!-- index.html -->
+    <body>
+        <div class="container" >
+
+            <div class="header">
+                <nav>
+                    <ul class="nav nav-pills pull-right">
+                        <li><a href="" ui-sref="home">Home</a></li>
+                        <li class=""><a class="explore" href="" ui-sref="about">About</a></li>
+                        <li class=""><a href="" ui-sref="contact">Contact</a></li>
+                    </ul>
+                </nav>
+                <h3 class="text-muted"><a href=""><img src="H3N2-logo.png" style="width: 150px; margin-top: -5px;" /></a></h3>
+            </div>
+
+            <div ui-view></div>
+
+            <footer class="footer">
+                <p>&copy; Birkbeck College, University of London - 2016</p>
+            </footer>
+
+        </div> <!-- /container -->
+
+    </body>
+</html>

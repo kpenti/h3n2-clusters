@@ -1,0 +1,217 @@
+<div class="container" style="position: relative">
+    <div class="transition-panel">
+        <div class="panel panel-default">
+            <!-- Default panel contents -->
+            <div class="panel-heading">{{collectionName}}
+            <a href="" ng-click="openFasta()" class="pull-right" ng-show="moleculeLoaded">
+                <i class="fa fa-upload"></i>
+            </a>
+            </div>
+            <div class="panel-body">
+                <label for="exampleInputEmail1">Reference strain</label>
+
+                <select class="chosen-select form-control" ng-options="item as item.id for item in fastaSequences track by item.id" ng-model="targetFasta" style="width:100%;"></select>
+            </div>
+
+            <!-- List group -->
+            <div class="scroll-container">
+                <ul class="list-group">
+                    <li class="list-group-item" ng-click="selectFasta(strain)" ng-class="{active: selectedFasta.id == strain.id}" ng-repeat="strain in fastaSequences"><a href="">{{strain.id}}</a></li>
+                </ul>
+            </div>
+
+            <div class="panel-footer">
+                <a href="" ng-click="performComparison()" ng-show="!running" class="btn btn-block btn-primary">Run</a>
+                <a href="" ng-show="running" disabled class="btn btn-block btn-primary">Please wait...</a>
+            </div>
+
+
+
+        </div>
+
+    </div>
+
+
+    <div class="row">
+        <div class="col-sm-9">
+            <br />
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-default" ng-class="{active: cluster == selectedCluster}" ng-click="showCluster(cluster)" ng-repeat="cluster in results.clusters track by $index">Cluster {{$index+1}}</button>
+            </div>
+        </div>
+
+        <div class="col-sm-3 text-center" style=" margin-top: 10px; " ng-show="results">
+            <span style="font-size: 30px; font-weight: bold; color: #5cb85c">{{results.clusterCount}}</span><br />
+            <p><small>Clusters identified</small></p>
+        </div>
+
+    </div>
+
+    <div class="row">
+
+        <div class="col-sm-12">
+            <div class="row">
+                <div class="col-sm-12">
+                    <div style="height: 470px; width: 100%; border: 1px solid #e2e2e2; position: relative; display: block;">
+						
+                        <div id='gldiv-loading' class="text-center" style="height: 50px; top: 10px; right: 10px;width: 50px; border: #e2e2e2; position: absolute; " >
+                            <i style="font-size: 30px;" class="fa fa-spinner fa-pulse"></i><br /><br /><br />
+                        </div>
+                        <div id='gldiv' style="height: 450px; width: 450px; border: #e2e2e2; position: relative; margin: 0 auto;" class='viewer_3Dmoljs'></div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+
+    </div>
+
+
+    <div class="row" style="margin-top: 25px;">
+		
+        <div class="col-sm-12">
+
+            <div role="tabpanel">
+
+                <ul class="nav nav-tabs">
+                    <li role="presentation" class="active"><a href="#sequence" role="tab" data-toggle="tab">Sequences</a></li>
+                    <li  role="presentation"><a href="#mutations" role="tab" data-toggle="tab">Mutations</a></li>
+                    <li  role="presentation"><a href="#patches" role="tab" data-toggle="tab">Patches</a></li>
+                    <li  role="presentation"><a href="#glycosylation" role="tab" data-toggle="tab">Glycosylation sites</a></li>
+                </ul>
+
+            </div>
+
+            <div class="tab-content">
+                <div role="tabpanel" class="tab-pane active" id="sequence">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            
+                            <div class="sequence-viewer">
+
+                                <div class="sequence-name">
+
+                                </div>
+                                <div class="sequence">
+                                    <div class="sequence-string">
+                                        <div class="amino-acid aa-numbering" ng-class="{'mutated-red': results.substitutions.indexOf(n+1)  > -1 }" ng-repeat="n in [] | range:328">{{ n+1 }}</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <div class="sequence-viewer">
+
+                                <div class="sequence-name">
+                                    {{ strain1 }}
+                                </div>
+                                <div class="sequence">
+                                    <div class="sequence-string">
+                                        <div class="amino-acid" ng-class="{'mutated-red': results.substitutions.indexOf($index+1)  > -1, 'mutated-highlight':   results.glycosylation.sequence1.indexOf($index+1)  > -1}" ng-repeat="aa in results.sequence1.substr(1).split('') track by $index">{{aa}}</div>
+                                    </div>
+
+                                </div>
+                            </div>
+
+
+                            <div class="sequence-viewer">
+
+                                <div class="sequence-name">
+                                    {{ strain2 }}
+                                </div>
+                                <div class="sequence">
+                                    <div class="sequence-string">
+                                        <div class="amino-acid" ng-class="{'mutated-red': results.substitutions.indexOf($index+1)  > -1, 'mutated-highlight':   results.glycosylation.sequence2.indexOf($index+1)  > -1 }" ng-repeat="aa in results.sequence2.substr(1).split('') track by $index">{{aa}}</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <div class="sequence-viewer" style="margin-top: 15px;">
+                                <div class="sequence-name">
+
+                                </div>
+                                <div class="sequence-slider">
+                                    <div id="soft"></div>
+                                </div>
+                            </div>
+
+
+                        </div>
+
+                    </div>
+
+
+                </div>
+
+                <div role="tabpanel" class="tab-pane" id="mutations">
+                    <br />
+                    <div clas="row">
+                        <div class="col-md-2" ng-repeat="mutation in results.mutations" style="margin-bottom: 5px;">
+                            <a href="" class="btn btn-default btn-block" ng-class="{active: isSelectedResidue(mutation)}" ng-click="selectResidue(mutation)">{{ mutation }}</a>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div role="tabpanel" class="tab-pane" id="patches">
+
+                    <br />
+                    <div clas="row">
+                        
+                        <div class="col-md-2" ng-repeat="patch in results.patches" style="margin-bottom: 5px;">
+                            <a href="" class="btn btn-default btn-block" ng-click="showPatch(patch)">{{ patch.centroid }}</a>
+                        </div>
+                        
+                    </div>
+
+                </div>
+
+                <div role="tabpanel" class="tab-pane" id="glycosylation">
+
+                    <br />
+                    <div clas="row">
+                        <div class="col-md-12"  style="margin-bottom: 5px;">
+
+							<table class="table table-striped">
+								<thead>
+									<tr>
+										<th></th>
+										<th ng-repeat="gs in knownGlycosylationSites">{{gs}}</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr>
+										<th scope="row">{{ strain1 }}</th>
+										<td ng-repeat="gs in knownGlycosylationSites" ng-class="{'mutated-highlight':   results.glycosylation.sequence1.indexOf(gs)  > -1}">{{gs}}</td>
+									</tr>
+									<tr>
+										<th scope="row">{{ strain2 }}</th>
+										<td ng-repeat="gs in knownGlycosylationSites" ng-class="{'mutated-highlight':   results.glycosylation.sequence2.indexOf(gs)  > -1}">{{gs}}</td>
+									</tr>
+								</tbody>
+							</table>
+							
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+
+</div><!-- /.container -->
+
+
+<a href="" ng-click="openFasta()" class="transition-switch text-center" ng-show="moleculeLoaded">
+    <i class="fa fa-upload"></i>
+    <span>Upload your own sequences</span>
+</a>
